@@ -3,7 +3,11 @@ name = "artefact-emporio"
 version = "0.1.0"
 description = "Agente de atendimento da Empório da Música (ReAct + RAG + function calling, modelo local)"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.4",
+    "openai>=3.42.0",
+    "pdfplumber>=0.11.10",
+]
 
 [dependency-groups]
 dev = ["pytest>=8"]
