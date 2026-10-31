@@ -1,7 +1,7 @@
 """RAG das políticas da loja: porte da célula 106 do notebook ia_e_machine_learning.ipynb.
 
 Mesma receita (pdfplumber, chunks de 1200/150, vetores normalizados, índice em numpy,
-top-k por produto escalar), trocando o embedding do Gemini por um servidor local.
+top-k por produto escalar). Muda só o acesso: API compatível com OpenAI, em vez do SDK do Gemini.
 Uso: python rag.py ingerir | python rag.py perguntar "sua pergunta"
 """
 import json
@@ -17,9 +17,10 @@ from openai import OpenAI
 
 RAIZ = Path(__file__).parent
 PDF = RAIZ / "data" / "politicas_da_loja.pdf"
-INDEX_DIR = RAIZ / "index"
-BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:1234/v1")
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "text-embedding-bge-m3")
+BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "google/gemini-embedding-001")
+# Uma pasta por modelo: vetores de modelos diferentes não são comparáveis.
+INDEX_DIR = RAIZ / "index" / re.sub(r"\W+", "_", EMBED_MODEL)
 
 CHUNK_CHARS, OVERLAP, TOP_K, BATCH = 1200, 150, 4, 16
 
@@ -30,7 +31,8 @@ CORRECOES = {
     "Parcela mínima de R$ 100,00": "Parcela mínima conforme item 3.1",
 }
 
-client = OpenAI(base_url=BASE_URL, api_key="local")
+# Sem chave, a primeira chamada falha com 401, e a CLI explica o que configurar.
+client = OpenAI(base_url=BASE_URL, api_key=os.environ.get("LLM_API_KEY") or "sem-chave")
 
 
 # ---------------- ingest (offline) ----------------
@@ -108,7 +110,7 @@ def ingest(pdf_path=PDF):
     chunks = chunk_pages(pages)
     print(f"{len(pages)} páginas -> {len(chunks)} chunks. Gerando embeddings com {EMBED_MODEL} ...")
     index = embed([c[1] for c in chunks])
-    INDEX_DIR.mkdir(exist_ok=True)
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
     np.save(INDEX_DIR / "index.npy", index)
     with open(INDEX_DIR / "chunks.json", "w", encoding="utf-8") as f:
         json.dump([{"page": p, "text": t} for p, t in chunks], f, ensure_ascii=False)

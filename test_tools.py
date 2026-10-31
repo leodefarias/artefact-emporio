@@ -109,3 +109,22 @@ def test_pedido_entregue_nao_fica_atrasado_e_cancelado_traz_motivo():
 def _email(customer_id):
     from tools import CLIENTES
     return CLIENTES[str(customer_id)]["email"]
+
+
+def test_executar_devolve_erro_em_vez_de_quebrar_o_agente():
+    from tools import executar
+    assert "erro" in executar("apagar_tudo", {})
+    assert "erro" in executar("buscar_produtos", {"campo_inexistente": 1})
+    assert "erro" in executar("consultar_pedido", {"order_id": 1})
+    assert "erro" in executar("buscar_produtos", {"preco_max": "NaN"})
+    assert "Takamine GD20" in executar("buscar_produtos", {"termo": "GD20"})
+
+
+def test_categoria_errada_nao_esconde_produto_buscado_por_nome():
+    assert buscar_produtos(termo="Takamine GD20", categoria="Guitarras")["total"] == 1
+
+
+def test_lista_longa_traz_descricao_para_o_agente_poder_recomendar():
+    r = buscar_produtos(categoria="Violões", preco_max=1000)
+    assert all(p["descricao"] for p in r["produtos"])
+    assert "especificacoes" not in r["produtos"][0]

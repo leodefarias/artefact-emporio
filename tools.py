@@ -1,10 +1,13 @@
 """Ferramentas de dados do agente. Todo preço e toda data são calculados aqui, nunca pelo LLM."""
 import csv
+import json
 import re
 import unicodedata
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+
+from rag import buscar_politicas
 
 DATA = Path(__file__).parent / "data"
 LIMITE_RESULTADOS = 15
@@ -88,8 +91,9 @@ def _ficha(produto, detalhada):
                 "preco_tabela": _brl(produto["price_brl"]),
                 "preco_pix": _brl(_com_desconto(produto["price_brl"], DESCONTO_PIX)),
             }
+    ficha["descricao"] = produto["description"]  # base para recomendar ("bom para iniciante?")
     if detalhada:
-        ficha |= {"descricao": produto["description"], "especificacoes": produto["specs"]}
+        ficha["especificacoes"] = produto["specs"]
     return ficha
 
 
@@ -125,6 +129,11 @@ def buscar_produtos(termo=None, categoria=None, preco_max=None, so_disponiveis=N
         if so_promocao and p["product_id"] not in PROMOCOES_ATIVAS:
             continue
         achados.append(p)
+
+    # Modelos pequenos erram a categoria (Takamine em "Guitarras"), e dizer que um produto
+    # existente não existe é o pior erro possível: o nome vale mais que a categoria.
+    if not achados and termo and categoria:
+        return buscar_produtos(termo, None, preco_max, so_disponiveis, so_promocao)
 
     achados.sort(key=lambda p: Decimal(p["price_brl"]))
     detalhada = len(achados) <= 5
@@ -179,3 +188,73 @@ def consultar_pedido(order_id, email_ou_telefone, hoje=None):
     if pedido["notes"]:
         resposta["observacoes"] = pedido["notes"]
     return resposta
+
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "buscar_produtos",
+            "description": "Consulta o catálogo: preço, estoque, disponibilidade, promoções ativas "
+            "e características de instrumentos.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "termo": {"type": "string", "description": "Nome, marca ou modelo. Ex.: 'Takamine GD20'."},
+                    "categoria": {"type": "string", "enum": sorted(CATEGORIAS.values())},
+                    "preco_max": {"type": "number", "description": "Preço máximo em reais."},
+                    "so_disponiveis": {
+                        "type": "boolean",
+                        "description": "Só itens à venda com estoque. Se omitido: sim, exceto em busca por termo.",
+                    },
+                    "so_promocao": {"type": "boolean", "description": "Só itens com promoção ativa."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_pedido",
+            "description": "Consulta status, itens, rastreio e prazos de um pedido. Exige o número do "
+            "pedido E o e-mail ou telefone informados pelo cliente; se faltar um, peça antes de chamar.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "integer"},
+                    "email_ou_telefone": {"type": "string"},
+                },
+                "required": ["order_id", "email_ou_telefone"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "buscar_politicas",
+            "description": "Busca no manual da loja: horário, endereço, contato, o que a loja vende, formas "
+            "de pagamento, parcelamento, trocas, devoluções, frete, garantia, regras de promoção e privacidade.",
+            "parameters": {
+                "type": "object",
+                "properties": {"pergunta": {"type": "string"}},
+                "required": ["pergunta"],
+            },
+        },
+    },
+]
+
+
+def executar(nome, argumentos):
+    """Roda a ferramenta pedida pelo LLM. Argumento ruim volta como erro para ele corrigir."""
+    funcoes = {
+        "buscar_produtos": buscar_produtos,
+        "consultar_pedido": consultar_pedido,
+        "buscar_politicas": buscar_politicas,
+    }
+    if nome not in funcoes:
+        return json.dumps({"erro": f"Ferramenta desconhecida: {nome}"}, ensure_ascii=False)
+    try:
+        resultado = funcoes[nome](**argumentos)
+    except (TypeError, ArithmeticError) as e:
+        return json.dumps({"erro": f"Argumentos inválidos: {e}"}, ensure_ascii=False)
+    return resultado if isinstance(resultado, str) else json.dumps(resultado, ensure_ascii=False)
