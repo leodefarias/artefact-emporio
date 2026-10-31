@@ -1,0 +1,12 @@
+[project]
+name = "artefact-emporio"
+version = "0.1.0"
+description = "Agente de atendimento da Empório da Música (ReAct + RAG + function calling, modelo local)"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
