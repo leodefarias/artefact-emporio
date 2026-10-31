@@ -108,14 +108,14 @@ def ingest(pdf_path=PDF):
     if sum(len(t) for _, t in pages) < 40:
         sys.exit("PDF sem texto extraível: provavelmente escaneado; rode OCR antes.")
     chunks = chunk_pages(pages)
-    print(f"{len(pages)} páginas -> {len(chunks)} chunks. Gerando embeddings com {EMBED_MODEL} ...")
+    print(f"{len(pages)} páginas -> {len(chunks)} chunks. Gerando embeddings com {EMBED_MODEL} ...", file=sys.stderr)
     index = embed([c[1] for c in chunks])
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
     np.save(INDEX_DIR / "index.npy", index)
     with open(INDEX_DIR / "chunks.json", "w", encoding="utf-8") as f:
         json.dump([{"page": p, "text": t} for p, t in chunks], f, ensure_ascii=False)
     load_index.cache_clear()
-    print(f"Salvo {INDEX_DIR}/index.npy {index.shape} + chunks.json")
+    print(f"Salvo {INDEX_DIR}/index.npy {index.shape} + chunks.json", file=sys.stderr)
 
 
 # ---------------- query (online) ----------------

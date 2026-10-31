@@ -243,6 +243,19 @@ TOOLS = [
     },
 ]
 
+# Modelos com tool calling costumam agir sem escrever texto. Um argumento obrigatório torna
+# explícito o raciocínio de cada passo do ReAct, em qualquer modelo; o cliente nunca o vê.
+for _tool in TOOLS:
+    _parametros = _tool["function"]["parameters"]
+    _parametros["properties"] = {
+        "pensamento": {
+            "type": "string",
+            "description": "Uma frase: o que o cliente precisa, o que falta saber e por que esta ferramenta.",
+        },
+        **_parametros["properties"],
+    }
+    _parametros["required"] = ["pensamento", *_parametros.get("required", [])]
+
 
 def executar(nome, argumentos):
     """Roda a ferramenta pedida pelo LLM. Argumento ruim volta como erro para ele corrigir."""

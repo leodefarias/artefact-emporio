@@ -70,6 +70,23 @@ def test_raciocinio_nao_vaza_para_o_cliente(monkeypatch):
     assert agent.responder([], "oi")[0] == "Olá!"
 
 
+def test_pensamento_vai_para_o_trace_e_nao_para_a_ferramenta_nem_ao_cliente(monkeypatch):
+    recebidas = _llm_roteirizado(
+        monkeypatch,
+        _msg(chamadas=[("buscar_produtos", '{"pensamento": "preciso do preço", "termo": "GD20"}')]),
+        _msg("Sai por R$ 2.199,00"),
+    )
+    linhas = []
+    resposta, _, _ = agent.responder([], "Quanto custa?", trace=linhas.append)
+    assert "Pensamento: preciso do preço" in linhas
+    assert "2.199,00" in recebidas[1][-1]["content"]  # não virou erro de argumento
+    assert "preciso do preço" not in resposta
+
+
+def test_toda_ferramenta_exige_pensamento():
+    assert all("pensamento" in t["function"]["parameters"]["required"] for t in agent.TOOLS)
+
+
 def test_resposta_sem_choices_vira_mensagem_de_falha(monkeypatch):
     _llm_roteirizado(monkeypatch, NS(choices=None, usage=None))
     assert agent.responder([], "oi")[0] == agent.FALHA

@@ -124,6 +124,10 @@ def responder(historico, mensagem, modelo=MODELO, trace=None):
             nome = chamada.function.name
             try:
                 argumentos = json.loads(chamada.function.arguments or "{}")
+                # O passo "Thought" do ReAct chega como argumento obrigatório, não vai para a ferramenta.
+                pensamento = argumentos.pop("pensamento", None) if isinstance(argumentos, dict) else None
+                if trace and pensamento:
+                    trace(f"Pensamento: {pensamento}")
                 observacao = executar(nome, argumentos)
             except json.JSONDecodeError:
                 argumentos = chamada.function.arguments
