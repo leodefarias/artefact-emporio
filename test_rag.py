@@ -1,4 +1,4 @@
-"""Testa o chunking (offline) e a recuperação (com servidor local), antes de ligar o LLM."""
+"""Tests chunking (offline) and retrieval (needs the embedding API), before involving the LLM."""
 import pytest
 
 import rag
@@ -19,14 +19,14 @@ precisa_servidor = pytest.mark.skipif(
 
 
 def test_chunking_nao_perde_palavra_e_respeita_limites():
-    # O chunking original do notebook perdia a palavra que estourava o limite.
+    # The notebook's original chunking lost the word that overflowed the limit.
     palavras = [f"palavra{i}" for i in range(1000)]
     chunks = rag.chunk_pages([(1, " ".join(palavras))])
     assert len(chunks) > 1
     assert all(len(texto) <= rag.CHUNK_CHARS for _, texto in chunks)
     vistas = {p for _, texto in chunks for p in texto.split()}
     assert vistas == set(palavras)
-    # Há sobreposição entre chunks vizinhos.
+    # Neighboring chunks overlap.
     assert set(chunks[0][1].split()) & set(chunks[1][1].split())
 
 
@@ -36,7 +36,7 @@ def test_limpeza_do_manual():
     assert "Página 2" not in texto and "Manual de Políticas e Procedimentos\n" not in paginas[2]
     assert "3321-4500" not in texto and "empóriodamusica" not in texto
     assert "Parcela mínima de R$ 100,00" not in texto
-    assert "parcela mínima de R$ 100,00" in texto  # regra do §3.1 permanece
+    assert "parcela mínima de R$ 100,00" in texto  # the §3.1 rule remains
 
 
 @precisa_servidor
@@ -59,7 +59,7 @@ def test_recuperacao_traz_pagina_certa_em_primeiro(pergunta, paginas):
 
 @precisa_servidor
 def test_pergunta_entre_secoes_traz_as_duas_paginas():
-    # A resposta exige o desconto do PIX (p.3) e a regra de não acumular (p.6);
-    # o agente recebe todos os trechos do top-k, então a ordem entre as duas não importa.
+    # The answer needs the PIX discount (p.3) and the no-stacking rule (p.6);
+    # the agent receives all top-k excerpts, so the order between them does not matter.
     paginas = {hit["page"] for hit in rag.retrieve("Promoção acumula com desconto do PIX?")}
     assert {3, 6} <= paginas

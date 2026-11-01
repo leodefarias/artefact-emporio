@@ -1,4 +1,4 @@
-"""Ferramentas de dados do agente. Todo preço e toda data são calculados aqui, nunca pelo LLM."""
+"""The agent's data tools. Every price and date is computed here, never by the LLM."""
 import csv
 import json
 import re
@@ -38,14 +38,14 @@ ITENS = _ler("order_items")
 PROMOCOES_ATIVAS = {}
 for _p in _ler("promotions"):
     if _p["is_active"] == "1":
-        # manual §6.2: promoções não acumulam; vale a maior
+        # manual §6.2: promotions do not stack; the largest applies
         atual = PROMOCOES_ATIVAS.get(_p["product_id"])
         if not atual or int(_p["discount_percent"]) > int(atual["discount_percent"]):
             PROMOCOES_ATIVAS[_p["product_id"]] = _p
 
 
 def _compacto(texto):
-    """Minúsculas, sem acento e sem pontuação: 'GD-20' casa com 'gd20'."""
+    """Lowercase, no accents, no punctuation: 'GD-20' matches 'gd20'."""
     sem_acento = unicodedata.normalize("NFKD", str(texto)).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]", "", sem_acento.lower())
 
@@ -76,7 +76,7 @@ def _ficha(produto, detalhada):
     }
     if situacao == "disponível":
         ficha["estoque"] = int(produto["stock_quantity"])
-    if situacao != "descontinuado":  # fora do catálogo não tem preço a oferecer
+    if situacao != "descontinuado":  # no longer in the catalog, so no price to offer
         promocao = PROMOCOES_ATIVAS.get(produto["product_id"])
         if promocao:
             percentual = int(promocao["discount_percent"])
@@ -91,14 +91,14 @@ def _ficha(produto, detalhada):
                 "preco_tabela": _brl(produto["price_brl"]),
                 "preco_pix": _brl(_com_desconto(produto["price_brl"], DESCONTO_PIX)),
             }
-    ficha["descricao"] = produto["description"]  # base para recomendar ("bom para iniciante?")
+    ficha["descricao"] = produto["description"]  # basis for recommendations ("good for a beginner?")
     if detalhada:
         ficha["especificacoes"] = produto["specs"]
     return ficha
 
 
 def buscar_produtos(termo=None, categoria=None, preco_max=None, so_disponiveis=None, so_promocao=False):
-    # O LLM pode mandar "" ou "1000" em vez de null e 1000.
+    # The LLM may send "" or "1000" instead of null and 1000.
     if preco_max not in (None, ""):
         try:
             preco_max = Decimal(str(preco_max))
@@ -108,7 +108,7 @@ def buscar_produtos(termo=None, categoria=None, preco_max=None, so_disponiveis=N
         preco_max = None
     if categoria and categoria not in CATEGORIAS.values():
         return {"erro": f"Categoria inválida. Opções: {sorted(CATEGORIAS.values())}"}
-    # Busca por nome mostra também esgotados, para o agente sugerir alternativas (manual §7.3).
+    # A name search also shows out-of-stock items, so the agent can suggest alternatives (manual §7.3).
     if so_disponiveis is None:
         so_disponiveis = not termo
 
@@ -116,7 +116,7 @@ def buscar_produtos(termo=None, categoria=None, preco_max=None, so_disponiveis=N
     achados = []
     for p in PRODUTOS:
         categoria_p = CATEGORIAS[p["category_id"]]
-        # ponytail: substring sobre o texto todo; trocar por busca semântica se o catálogo crescer
+        # ponytail: substring over all text; switch to semantic search if the catalog grows
         texto = _compacto(f'{p["name"]} {p["description"]} {categoria_p}')
         if not all(t in texto for t in tokens):
             continue
@@ -130,8 +130,8 @@ def buscar_produtos(termo=None, categoria=None, preco_max=None, so_disponiveis=N
             continue
         achados.append(p)
 
-    # Modelos pequenos erram a categoria (Takamine em "Guitarras"), e dizer que um produto
-    # existente não existe é o pior erro possível: o nome vale mais que a categoria.
+    # Small models get the category wrong (Takamine under "Guitarras"), and denying that an
+    # existing product exists is the worst possible error: the name outranks the category.
     if not achados and termo and categoria:
         return buscar_produtos(termo, None, preco_max, so_disponiveis, so_promocao)
 
@@ -155,8 +155,8 @@ def _contato_confere(cliente, contato):
 
 def consultar_pedido(order_id, email_ou_telefone, hoje=None):
     hoje = hoje or date.today()
-    # A verificação fica aqui, e não no prompt, para o LLM não ter como contorná-la (LGPD).
-    # Mesma resposta para pedido inexistente e contato errado: não revela quais pedidos existem.
+    # The check lives here, not in the prompt, so the LLM cannot bypass it (LGPD).
+    # Same response for a nonexistent order and a wrong contact: does not reveal which orders exist.
     pedido = PEDIDOS.get(str(order_id).strip().lstrip("#"))
     if not pedido or not _contato_confere(CLIENTES[pedido["customer_id"]], email_ou_telefone):
         return ACESSO_NEGADO
@@ -183,7 +183,7 @@ def consultar_pedido(order_id, email_ou_telefone, hoje=None):
         resposta["rastreio"] = pedido["tracking_code"]
     if previsao:
         resposta["previsao_entrega"] = previsao
-        # Os dados não têm data de recebimento; a previsão é a melhor aproximação (ver README).
+        # The data has no delivery-received date; the estimate is the best approximation (see README).
         resposta["dias_desde_previsao_entrega"] = (hoje - date.fromisoformat(previsao)).days
     if pedido["notes"]:
         resposta["observacoes"] = pedido["notes"]
@@ -195,19 +195,19 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "buscar_produtos",
-            "description": "Consulta o catálogo: preço, estoque, disponibilidade, promoções ativas "
-            "e características de instrumentos.",
+            "description": "Looks up the catalog: price, stock, availability, active promotions, "
+            "and instrument features.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "termo": {"type": "string", "description": "Nome, marca ou modelo. Ex.: 'Takamine GD20'."},
+                    "termo": {"type": "string", "description": "Name, brand, or model. E.g., 'Takamine GD20'."},
                     "categoria": {"type": "string", "enum": sorted(CATEGORIAS.values())},
-                    "preco_max": {"type": "number", "description": "Preço máximo em reais."},
+                    "preco_max": {"type": "number", "description": "Maximum price in Brazilian reais."},
                     "so_disponiveis": {
                         "type": "boolean",
-                        "description": "Só itens à venda com estoque. Se omitido: sim, exceto em busca por termo.",
+                        "description": "Only items on sale with stock. If omitted: yes, except when searching by termo.",
                     },
-                    "so_promocao": {"type": "boolean", "description": "Só itens com promoção ativa."},
+                    "so_promocao": {"type": "boolean", "description": "Only items with an active promotion."},
                 },
             },
         },
@@ -216,8 +216,8 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "consultar_pedido",
-            "description": "Consulta status, itens, rastreio e prazos de um pedido. Exige o número do "
-            "pedido E o e-mail ou telefone informados pelo cliente; se faltar um, peça antes de chamar.",
+            "description": "Looks up an order's status, items, tracking, and deadlines. Requires the order "
+            "number AND the email or phone given by the customer; if one is missing, ask before calling.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -232,25 +232,27 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "buscar_politicas",
-            "description": "Busca no manual da loja: horário, endereço, contato, o que a loja vende, formas "
-            "de pagamento, parcelamento, trocas, devoluções, frete, garantia, regras de promoção e privacidade.",
+            "description": "Searches the store manual: hours, address, contact, what the store sells, payment methods, "
+            "installments, exchanges, returns, shipping, warranty, promotion rules, and privacy.",
             "parameters": {
                 "type": "object",
-                "properties": {"pergunta": {"type": "string"}},
+                "properties": {
+                    "pergunta": {"type": "string", "description": "The question, in Brazilian Portuguese (the manual's language)."},
+                },
                 "required": ["pergunta"],
             },
         },
     },
 ]
 
-# Modelos com tool calling costumam agir sem escrever texto. Um argumento obrigatório torna
-# explícito o raciocínio de cada passo do ReAct, em qualquer modelo; o cliente nunca o vê.
+# Tool-calling models often act without writing text. A required argument makes the reasoning
+# of each ReAct step explicit, on any model; the customer never sees it.
 for _tool in TOOLS:
     _parametros = _tool["function"]["parameters"]
     _parametros["properties"] = {
         "pensamento": {
             "type": "string",
-            "description": "Uma frase: o que o cliente precisa, o que falta saber e por que esta ferramenta.",
+            "description": "One sentence in English: what the customer needs, what is missing, and why this tool.",
         },
         **_parametros["properties"],
     }
@@ -258,7 +260,7 @@ for _tool in TOOLS:
 
 
 def executar(nome, argumentos):
-    """Roda a ferramenta pedida pelo LLM. Argumento ruim volta como erro para ele corrigir."""
+    """Runs the tool the LLM asked for. A bad argument returns as an error for it to correct."""
     funcoes = {
         "buscar_produtos": buscar_produtos,
         "consultar_pedido": consultar_pedido,

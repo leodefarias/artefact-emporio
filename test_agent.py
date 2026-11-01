@@ -1,4 +1,4 @@
-"""Testa a lógica do loop ReAct com um LLM falso; não precisa de servidor."""
+"""Tests the ReAct loop logic with a fake LLM; needs no server."""
 from datetime import datetime
 from types import SimpleNamespace as NS
 
@@ -62,7 +62,7 @@ def test_historico_guarda_so_conversa_e_e_limitado(monkeypatch):
     for i in range(8):
         agent.responder(historico, f"m{i}")
     assert {m["role"] for m in historico} == {"user", "assistant"}
-    assert len(recebidas[-1]) <= agent.MAX_HISTORICO + 2 + 2  # sistema, turno, chamada e observação
+    assert len(recebidas[-1]) <= agent.MAX_HISTORICO + 2 + 2  # system, turn, call, and observation
 
 
 def test_raciocinio_nao_vaza_para_o_cliente(monkeypatch):
@@ -79,7 +79,7 @@ def test_pensamento_vai_para_o_trace_e_nao_para_a_ferramenta_nem_ao_cliente(monk
     linhas = []
     resposta, _, _ = agent.responder([], "Quanto custa?", trace=linhas.append)
     assert "Pensamento: preciso do preço" in linhas
-    assert "2.199,00" in recebidas[1][-1]["content"]  # não virou erro de argumento
+    assert "2.199,00" in recebidas[1][-1]["content"]  # did not become an argument error
     assert "preciso do preço" not in resposta
 
 
@@ -93,16 +93,16 @@ def test_resposta_sem_choices_vira_mensagem_de_falha(monkeypatch):
 
 
 def test_expediente():
-    assert "aberta" in agent.contexto_atual(datetime(2026, 11, 2, 9, 0))    # segunda 9h
-    assert "fechada" in agent.contexto_atual(datetime(2026, 11, 2, 18, 0))  # segunda 18h
-    assert "aberta" in agent.contexto_atual(datetime(2026, 10, 31, 12, 59))  # sábado
-    assert "fechada" in agent.contexto_atual(datetime(2026, 10, 31, 13, 0))
-    assert "fechada" in agent.contexto_atual(datetime(2026, 11, 1, 10, 0))  # domingo
+    assert "store open" in agent.contexto_atual(datetime(2026, 11, 2, 9, 0))    # Monday 9:00
+    assert "store closed" in agent.contexto_atual(datetime(2026, 11, 2, 18, 0))  # Monday 18:00
+    assert "store open" in agent.contexto_atual(datetime(2026, 10, 31, 12, 59))  # Saturday
+    assert "store closed" in agent.contexto_atual(datetime(2026, 10, 31, 13, 0))
+    assert "store closed" in agent.contexto_atual(datetime(2026, 11, 1, 10, 0))  # Sunday
 
 
 def test_retorno_da_equipe():
-    assert "volta segunda-feira" in agent.contexto_atual(datetime(2026, 10, 31, 17, 40))  # sábado à tarde
-    assert "volta segunda-feira" in agent.contexto_atual(datetime(2026, 11, 1, 8, 0))     # domingo cedo
-    assert "volta terça-feira" in agent.contexto_atual(datetime(2026, 11, 2, 19, 0))      # segunda à noite
-    assert "volta segunda-feira" in agent.contexto_atual(datetime(2026, 11, 2, 7, 0))     # segunda cedo
-    assert "volta sábado" in agent.contexto_atual(datetime(2026, 11, 6, 20, 0))           # sexta à noite
+    assert "staff returns Monday" in agent.contexto_atual(datetime(2026, 10, 31, 17, 40))  # Saturday afternoon
+    assert "staff returns Monday" in agent.contexto_atual(datetime(2026, 11, 1, 8, 0))     # early Sunday
+    assert "staff returns Tuesday" in agent.contexto_atual(datetime(2026, 11, 2, 19, 0))      # Monday night
+    assert "staff returns Monday" in agent.contexto_atual(datetime(2026, 11, 2, 7, 0))     # early Monday
+    assert "staff returns Saturday" in agent.contexto_atual(datetime(2026, 11, 6, 20, 0))           # Friday night

@@ -1,8 +1,8 @@
-"""RAG das políticas da loja: porte da célula 106 do notebook ia_e_machine_learning.ipynb.
+"""RAG over the store policies: a port of cell 106 of the ia_e_machine_learning.ipynb notebook.
 
-Mesma receita (pdfplumber, chunks de 1200/150, vetores normalizados, índice em numpy,
-top-k por produto escalar). Muda só o acesso: API compatível com OpenAI, em vez do SDK do Gemini.
-Uso: python rag.py ingerir | python rag.py perguntar "sua pergunta"
+Same recipe (pdfplumber, 1200/150 chunks, normalized vectors, numpy index, top-k by dot
+product). Only access changes: an OpenAI-compatible API instead of the Gemini SDK.
+Usage: python rag.py ingerir | python rag.py perguntar "your question"
 """
 import json
 import os
@@ -19,26 +19,26 @@ RAIZ = Path(__file__).parent
 PDF = RAIZ / "data" / "politicas_da_loja.pdf"
 BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "google/gemini-embedding-001")
-# Uma pasta por modelo: vetores de modelos diferentes não são comparáveis.
+# One folder per model: vectors from different models are not comparable.
 INDEX_DIR = RAIZ / "index" / re.sub(r"\W+", "_", EMBED_MODEL)
 
 CHUNK_CHARS, OVERLAP, TOP_K, BATCH = 1200, 150, 4, 16
 
-# O manual se contradiz; adotamos uma versão de cada dado (justificativa no README).
+# The manual contradicts itself; we adopt one version of each fact (rationale in the README).
 CORRECOES = {
     "3321-4500": "3341-4444",
     "contato@empóriodamusica": "contato@emporiodamusica",
     "Parcela mínima de R$ 100,00": "Parcela mínima conforme item 3.1",
 }
 
-# Sem chave, a primeira chamada falha com 401, e a CLI explica o que configurar.
+# Without a key, the first call fails with a 401, and the CLI explains what to configure.
 client = OpenAI(base_url=BASE_URL, api_key=os.environ.get("LLM_API_KEY") or "sem-chave")
 
 
 # ---------------- ingest (offline) ----------------
 
 def limpar_pagina(texto):
-    """Tira cabeçalho e rodapé repetidos, que só poluem o embedding, e aplica as correções."""
+    """Removes repeated headers and footers, which only pollute the embedding, and applies corrections."""
     linhas = [
         linha for linha in texto.splitlines()
         if not linha.startswith("Empório da Música Manual de Políticas")
@@ -59,7 +59,7 @@ def extract_pages(pdf_path):
 
 
 def chunk_pages(pages):
-    """Empacota o texto em pedaços de ~CHUNK_CHARS, em fronteira de palavra, com OVERLAP."""
+    """Packs text into ~CHUNK_CHARS pieces, on word boundaries, with OVERLAP."""
     chunks = []
     for page_no, text in pages:
         words = text.split()
@@ -82,7 +82,7 @@ def chunk_pages(pages):
                     else:
                         break
 
-                # O notebook descartava `word` neste ponto, perdendo uma palavra a cada corte.
+                # The notebook dropped `word` here, losing one word at each cut.
                 current_chunk = overlap_words + [word]
                 current_len = overlap_len + len(word) + (1 if overlap_words else 0)
             else:
@@ -100,7 +100,7 @@ def embed(texts):
         response = client.embeddings.create(model=EMBED_MODEL, input=texts[i : i + BATCH])
         vecs.extend(item.embedding for item in response.data)
     v = np.array(vecs, dtype=np.float32)
-    return v / np.linalg.norm(v, axis=1, keepdims=True)  # normalizado: produto escalar == cosseno
+    return v / np.linalg.norm(v, axis=1, keepdims=True)  # normalized: dot product == cosine
 
 
 def ingest(pdf_path=PDF):
@@ -120,7 +120,7 @@ def ingest(pdf_path=PDF):
 
 # ---------------- query (online) ----------------
 
-@lru_cache(maxsize=1)  # o notebook relia o índice do disco a cada pergunta
+@lru_cache(maxsize=1)  # the notebook reread the index from disk on every question
 def load_index():
     if not (INDEX_DIR / "index.npy").exists():
         ingest()
@@ -138,7 +138,7 @@ def retrieve(question, k=TOP_K):
 
 
 def buscar_politicas(pergunta):
-    """Trechos numerados, no formato do notebook, para o agente responder e citar."""
+    """Numbered excerpts, in the notebook's format, for the agent to answer from and cite."""
     hits = retrieve(pergunta)
     return "\n\n".join(f"[{n}] (p. {h['page']}) {h['text']}" for n, h in enumerate(hits, 1))
 

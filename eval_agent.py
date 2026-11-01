@@ -1,6 +1,6 @@
-"""Avaliação ponta a ponta com o LLM real: ferramenta escolhida, fatos na resposta e velocidade.
+"""End-to-end evaluation with the real LLM: tool chosen, facts in the reply, and speed.
 
-Uso: uv run python eval_agent.py --model <identificador> [--trace]
+Usage: uv run python eval_agent.py --model <identifier> [--trace]
 """
 import argparse
 import re
@@ -9,8 +9,8 @@ import unicodedata
 
 from agent import MODELO, responder
 
-# (nome, mensagens, ferramenta esperada na última, regex obrigatórios, regex proibidos)
-# Ferramenta None: não pode chamar nenhuma que traga dados de pedido; "" : não verifica.
+# (name, messages, tool expected on the last one, required regexes, forbidden regexes)
+# Tool None: must not call anything that returns order data; "": not checked.
 CASOS = [
     ("catalogo_ate_1000", ["Quais opções de violões disponíveis custando até R$1000?"],
      "buscar_produtos", [r"yamaha c40", r"429,90"], [r"gf-3d", r"sn-7c"]),

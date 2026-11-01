@@ -1,4 +1,4 @@
-"""Testa as ferramentas contra as armadilhas reais dos dados. Não precisa de LLM."""
+"""Tests the tools against the real data traps. Needs no LLM."""
 from datetime import date
 
 from tools import buscar_produtos, consultar_pedido

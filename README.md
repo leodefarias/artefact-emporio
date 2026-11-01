@@ -1,171 +1,179 @@
-# Mestre André: agente de atendimento da Empório da Música
+# Mestre André: customer service agent for Empório da Música
 
-Protótipo do desafio técnico de AI Engineer da Artefact. O Mestre André atende clientes de uma loja fictícia de instrumentos musicais em Campo Grande/MS: consulta catálogo e pedidos, aplica as políticas da loja e recusa o que foge do escopo.
+Prototype for Artefact's AI Engineer technical challenge. Mestre André serves customers of a fictional musical instrument store in Campo Grande, Brazil: he looks up the catalog and orders, applies store policies, and declines anything out of scope.
 
-**Arquitetura:** loop ReAct com function calling nativo, em que o RAG das políticas é uma das ferramentas. Resultado medido: 20 de 20 cenários aprovados em duas rodadas, cerca de 5 s por cenário.
+**Architecture:** a ReAct loop on native function calling, with RAG over the store policies as one of the tools. Measured result: 20 of 20 scenarios passed in two runs, at about 5 s per scenario.
 
-## Como rodar
+The agent replies in Brazilian Portuguese because its customers do, and the store data, CLI messages, code identifiers, and example conversations are in Portuguese. Documentation, code comments, and the agent's instructions (system prompt and tool descriptions) are in English.
 
-Requisitos: [uv](https://docs.astral.sh/uv/) e uma chave do [OpenRouter](https://openrouter.ai/keys) com créditos.
+## How to run
+
+Requirements: [uv](https://docs.astral.sh/uv/) and an [OpenRouter](https://openrouter.ai/keys) API key with credits.
 
 ```bash
 uv sync
-cp .env.example .env        # depois edite e coloque sua chave em LLM_API_KEY
+cp .env.example .env        # then edit it and put your key in LLM_API_KEY
 uv run --env-file .env python agent.py
 ```
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `uv run --env-file .env python agent.py --trace` | Conversa mostrando pensamento, ação e observação do ReAct |
-| `uv run --env-file .env pytest` | Testes. Sem chave, os de recuperação são pulados |
-| `uv run --env-file .env python eval_agent.py` | Avaliação ponta a ponta com o LLM real |
-| `uv run --env-file .env python rag.py ingerir` | Reconstrói o índice (também é criado sozinho na primeira consulta) |
-| `uv run --env-file .env python rag.py perguntar "..."` | Mostra os trechos recuperados, sem LLM |
+| `uv run --env-file .env python agent.py --trace` | Chat showing the ReAct thought, action, and observation |
+| `uv run --env-file .env pytest` | Tests. Without a key, retrieval tests are skipped |
+| `uv run --env-file .env python eval_agent.py` | End-to-end evaluation with the real LLM |
+| `uv run --env-file .env python rag.py ingerir` | Rebuilds the index (also built automatically on first query) |
+| `uv run --env-file .env python rag.py perguntar "..."` | Shows the retrieved excerpts, without the LLM |
 
-Exemplos de conversas reais, sem edição, em [`examples/`](examples/).
+Real, unedited conversations are in [`examples/`](examples/).
 
-### Alternativa local (LM Studio)
+### Local alternative (LM Studio)
 
-Funciona com qualquer API compatível com OpenAI; basta usar a variante comentada no `.env.example`. Nesta máquina, foi preciso:
+The agent works with any OpenAI-compatible API; use the commented variant in `.env.example`. On this machine, it took the following:
 
-- Baixar o LLM e o `bge-m3` em GGUF.
-- Carregar com `lms load <modelo> --context-length 8192 --parallel 1 --gpu off`. Sem `--parallel 1`, o contexto é dividido entre os slots.
-- Selecionar o runtime só-CPU, porque o runtime CUDA estourava a memória da GTX 750 Ti, mesmo com `--gpu off`.
-- Por instalar via flatpak, rodar `lms` com `HOME=~/.var/app/ai.lmstudio.lm-studio`.
+- Download the LLM and `bge-m3` as GGUF.
+- Load with `lms load <model> --context-length 8192 --parallel 1 --gpu off`. Without `--parallel 1`, the context is split across slots.
+- Select the CPU-only runtime, because the CUDA runtime ran out of memory on the GTX 750 Ti, even with `--gpu off`.
+- Because it was installed through flatpak, run `lms` with `HOME=~/.var/app/ai.lmstudio.lm-studio`.
 
-## Arquitetura
+## Architecture
 
 ```
-Cliente → agent.py: loop ReAct (máx. 4 passos) → LLM com tools
-                     ├─ buscar_produtos   → CSV; Python calcula preços
-                     ├─ consultar_pedido  → CSV; Python verifica identidade
-                     └─ buscar_politicas  → RAG sobre o manual em PDF
+Customer → agent.py: ReAct loop (max. 4 steps) → LLM with tools
+                      ├─ buscar_produtos   → CSV; Python computes prices
+                      ├─ consultar_pedido  → CSV; Python verifies identity
+                      └─ buscar_politicas  → RAG over the PDF manual
 ```
 
-| Arquivo | Papel |
+| Tool | Purpose |
 |---|---|
-| `agent.py` | Persona, loop ReAct, CLI |
-| `tools.py` | Ferramentas e seus schemas |
-| `rag.py` | Ingestão e recuperação do manual |
-| `eval_agent.py` | 20 cenários ponta a ponta |
-| `test_tools.py`, `test_rag.py`, `test_agent.py` | 43 testes; `test_agent.py` usa um LLM falso |
+| `buscar_produtos` | Search products: price, stock, availability, active promotions |
+| `consultar_pedido` | Look up an order: status, items, tracking |
+| `buscar_politicas` | Search the store manual: hours, address, payment, returns, shipping, warranty |
 
-## Decisões técnicas
+| File | Role |
+|---|---|
+| `agent.py` | Persona, ReAct loop, CLI |
+| `tools.py` | Tools and their schemas |
+| `rag.py` | Manual ingestion and retrieval |
+| `eval_agent.py` | 20 end-to-end scenarios |
+| `test_tools.py`, `test_rag.py`, `test_agent.py` | 43 tests; `test_agent.py` uses a fake LLM |
 
-### ReAct + function calling, sem framework
+## Technical decisions
 
-A cada passo o modelo decide entre chamar uma ferramenta ou responder; o resultado volta como observação. A escolha da ferramenta **é** a decisão "dados ou políticas" pedida no desafio.
+### ReAct + function calling, no framework
 
-- **Sem parse de texto `Thought/Action`:** tool calling nativo é mais robusto do que interpretar esse formato em texto livre.
-- **Pensamento explícito:** cada ferramenta exige o argumento `pensamento`, com uma frase sobre o que falta e por que essa ferramenta. O loop o retira antes de executar e o mostra no `--trace`; o cliente nunca o vê. Pedir isso só no prompt não funcionou (0 pensamentos em 16 ações): o modelo chamava a ferramenta sem escrever texto.
-- **Sem LangChain ou similar:** o loop tem poucas dezenas de linhas, e é fácil auditar e testar cada guarda.
+At each step the model either calls a tool or answers; the result comes back as an observation. Choosing a tool **is** the "data or policies" decision the challenge asks for.
 
-### O que o LLM não decide
+- **No parsing of `Thought/Action` text:** native tool calling is more robust than interpreting that format from free text.
+- **Explicit thought:** every tool requires a `pensamento` ("thought") argument, one English sentence on what is missing and why this tool. The loop removes it before executing and shows it in `--trace`; the customer never sees it. Asking for this in the prompt alone did not work (0 thoughts in 16 actions): the model called tools without writing any text.
+- **No LangChain or similar:** the loop is a few dozen lines, and each guard is easy to audit and test.
 
-Modelos erram contas e podem ser manipulados. Por isso, o que tem consequência fica em Python:
+### What the LLM does not decide
 
-- **Preços:** promoção ativa mostra preço original, percentual e preço promocional, sem PIX adicional (§6.2 do manual). Sem promoção, mostra tabela e PIX. A exceção é a divisão de parcelas, que o agente faz para conferir o mínimo do manual.
-- **Identidade (LGPD):** `consultar_pedido` exige número e e-mail ou telefone, e devolve a mesma resposta para pedido inexistente e contato errado. Só o primeiro nome sai. Injeção de prompt não contorna isso, porque a verificação não passa pelo modelo.
-- **Datas:** dias desde a compra e atraso são calculados, assim como se a loja está aberta e quando a equipe volta.
-- **Guarda:** resposta com `R$` sem ferramenta no turno recebe uma nova tentativa (§7.1: nunca informar preço sem consultar o sistema).
-- **Limites:** no máximo 4 passos por turno; depois disso, encaminha para a equipe.
+Models get math wrong and can be manipulated, so whatever has consequences lives in Python:
 
-### RAG: seguindo o notebook da disciplina
+- **Prices:** an active promotion shows the original price, percentage, and promotional price, with no additional PIX discount (manual §6.2). Without a promotion, it shows the list and PIX prices. The one exception is dividing installments, which the agent does to check the manual's minimum.
+- **Identity (LGPD, Brazil's data protection law):** `consultar_pedido` requires the order number and an email or phone, and returns the same response for a nonexistent order and a wrong contact. Only the first name is returned. Prompt injection cannot bypass this, because the check does not go through the model.
+- **Dates:** days since purchase and delays are computed, as are whether the store is open and when the staff returns.
+- **Guard:** a reply containing `R$` with no tool call in that turn gets one retry (§7.1: never state a price without checking the system).
+- **Limits:** at most 4 steps per turn; after that, the agent refers the customer to the staff.
 
-Porte da célula de 20/10 de `ia_e_machine_learning.ipynb`: pdfplumber, chunks de 1200 caracteres com 150 de sobreposição, vetores normalizados em numpy, top-4 por produto escalar, trechos numerados e citação da página. Sem banco vetorial, porque 12 chunks não precisam de um. As demais aulas do notebook (sklearn, redes neurais) não foram usadas, por não servirem ao problema.
+### RAG: following the course notebook
 
-Mudanças em relação ao notebook:
+A port of the 20/10 cell of `ia_e_machine_learning.ipynb`: pdfplumber, 1200-character chunks with 150 of overlap, normalized numpy vectors, top-4 by dot product, numbered excerpts, and page citations. There is no vector database, because 12 chunks do not need one. The notebook's other lessons (sklearn, neural networks) were not used, as they do not serve this problem.
 
-- **Bug corrigido:** `chunk_pages` descartava a palavra que estourava o limite, perdendo uma palavra a cada corte. Há teste para isso.
-- Índice em cache, em vez de relido a cada pergunta.
-- Cabeçalho e rodapé de página removidos antes do embedding.
-- `task_type` (`RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY`) deixou de ser usado: é a única diferença em relação ao embedding do notebook. O OpenRouter o ignora (vetor idêntico com e sem o parâmetro, cosseno 1,0), e usá-lo exigiria a API direta do Google. Todos os testes de recuperação passam sem ele.
+Changes from the notebook:
 
-`test_rag.py` valida a recuperação sem LLM. A pergunta "Promoção acumula com desconto do PIX?" cruza duas seções, então exige as duas páginas no top-4, em vez da correta em 1º.
+- **Bug fixed:** `chunk_pages` dropped the word that overflowed the limit, losing one word at each cut. A test covers this.
+- The index is cached instead of reloaded on every question.
+- Page headers and footers are removed before embedding.
+- `task_type` (`RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY`) is no longer used; this is the only difference from the notebook's embedding. OpenRouter ignores it (identical vector with and without the parameter, cosine 1.0), and using it would require Google's API directly. All retrieval tests pass without it.
+
+`test_rag.py` validates retrieval without the LLM. The question "Promoção acumula com desconto do PIX?" ("Does a promotion stack with the PIX discount?") spans two sections, so it requires both pages in the top 4 rather than the correct page first.
 
 ### Embedding: `google/gemini-embedding-001`
 
-É o modelo do notebook e o 1º colocado no [MTEB-BR](https://arxiv.org/html/2607.04581v2), benchmark nativo de português do Brasil (93 modelos, 22 tarefas). Indexar o manual inteiro (~4 mil tokens) custa menos de US$ 0,001.
+It is the notebook's model and ranks 1st on [MTEB-BR](https://arxiv.org/html/2607.04581v2), a native Brazilian Portuguese benchmark (93 models, 22 tasks). Indexing the whole manual (~4 thousand tokens) costs less than US$ 0.001.
 
-| Modelo | MTEB-BR | US$/M tokens |
+| Model | MTEB-BR | US$/M tokens |
 |---|---|---|
-| `google/gemini-embedding-001` | 1º, 0,6820 | 0,15 |
-| `qwen/qwen3-embedding-8b` | 2º, 0,6704 | 0,01 |
-| `voyageai/voyage-4-large` | 9º, 0,6532 | 0,12 |
-| `openai/text-embedding-3-large` | 16º, 0,645 | 0,13 |
-| `google/gemini-embedding-2` | 28º, 0,633 | 0,20 |
+| `google/gemini-embedding-001` | 1st, 0.6820 | 0.15 |
+| `qwen/qwen3-embedding-8b` | 2nd, 0.6704 | 0.01 |
+| `voyageai/voyage-4-large` | 9th, 0.6532 | 0.12 |
+| `openai/text-embedding-3-large` | 16th, 0.645 | 0.13 |
+| `google/gemini-embedding-2` | 28th, 0.633 | 0.20 |
 
-Ressalvas: os autores consideram os 6 primeiros um grupo sem ordem estatisticamente resolvida, e os scores são média de várias tarefas, não só recuperação. Por isso, o critério final foi `test_rag.py`. As posições 16 e 28 vieram de um resumo do artigo, não da leitura direta da tabela. Preços: API do OpenRouter, em 31/10/2026.
+Caveats: the authors consider the top 6 a group with no statistically resolved order, and scores average several tasks, not just retrieval. So `test_rag.py` was the final criterion. Ranks 16 and 28 came from a summary of the paper, not a direct reading of the table. Prices: OpenRouter API, on 2026-10-31.
 
 ### LLM: `anthropic/claude-haiku-5.5` via OpenRouter
 
-A ideia inicial era um modelo local escolhido com `llmfit`. A medição nesta máquina (i5-4570, 4 núcleos, GTX 750 Ti de 2 GB) mudou o plano:
+The initial idea was a local model chosen with `llmfit`. Measuring on this machine (i5-4570, 4 cores, 2 GB GTX 750 Ti) changed the plan:
 
 | | Qwen3.5 4B local (CPU) | Claude Haiku 5.5 (API) |
 |---|---|---|
-| Cenários aprovados | 12 de 18 | 20 de 20, em 2 rodadas |
-| Tempo por cenário | 99 s (pico de 594 s) | ~5 s |
-| Geração | ~3,2 tok/s (`llmfit` estimava 18,9) | ~150 tok/s, com prefill |
+| Scenarios passed | 12 of 18 | 20 of 20, in 2 runs |
+| Time per scenario | 99 s (peak of 594 s) | ~5 s |
+| Generation | ~3.2 tok/s (`llmfit` estimated 18.9) | ~150 tok/s, including prefill |
 
-- **A comparação não é idêntica:** o Qwen rodou antes de ajustes no prompt e dos 2 últimos cenários. Mesmo assim, suas falhas eram responder sem chamar ferramenta, e a latência sozinha já inviabilizava o uso.
-- **Candidatos locais incompletos:** Qwen3 4B só teve teste rápido; Llama 3.2 3B não terminou.
-- **Sobre o `llmfit`:** os mais bem pontuados eram destilações da comunidade em formatos que não rodam aqui, e a velocidade estimada ficou cerca de 6 vezes acima da real.
-- **Por que Haiku 5.5:** barato (US$ 0,10/M entrada, US$ 0,50/M saída), com tool calling. Não houve comparação com outros modelos de API: foi uma decisão direta, pois já atingia o objetivo. Trocar de modelo exige só `LLM_MODEL`.
+- **The comparison is not like for like:** Qwen ran before prompt adjustments and before the last 2 scenarios were added. Even so, its failures were answering without calling a tool, and latency alone ruled it out.
+- **Incomplete local candidates:** Qwen3 4B only had a quick test; Llama 3.2 3B did not finish.
+- **About `llmfit`:** its top-scored models were community distillations in formats that do not run here, and its speed estimate was about 6 times the real speed.
+- **Why Haiku 5.5:** inexpensive (US$ 0.10/M input, US$ 0.50/M output), with tool calling. It was not compared with other API models: this was a direct decision, since it already met the goal. Switching models only takes `LLM_MODEL`.
 
-### Estratégia de prompt
+### Prompt strategy
 
-Persona e tom vêm do §7.1 do manual ("informal mas profissional", como um amigo que entende de música). O prompt descreve quando usar cada ferramenta e traz regras curtas, em especial as situações do §7.3. Data e hora entram no turno, não no prompt de sistema, para manter o prefixo estável.
+Persona and tone come from manual §7.1 ("informal but professional", like a friend who knows music). The prompt is in English with an explicit rule to reply in Brazilian Portuguese, and the policy-search tool asks for questions in Portuguese, the manual's language. It describes when to use each tool and has short rules, especially for the situations in §7.3. Date and time go in the turn rather than the system prompt, to keep the prefix stable.
 
-O nome Mestre André ecoa a cantiga "Na loja do Mestre André".
+The name Mestre André echoes the Brazilian children's song "Na loja do Mestre André" ("At Master André's shop").
 
-### Interface e histórico
+### Interface and history
 
-- **CLI:** o foco é o agente, e ela permite gerar as conversas de `examples/` por redirecionamento.
-- **Histórico em memória, últimas 10 mensagens:** cobre follow-ups ("e no PIX?"). Sem persistência em disco, para não reter dados pessoais sem necessidade. Resultados de ferramentas não ficam no histórico, então preço e estoque são sempre consultados de novo.
+- **CLI:** the focus is the agent, and a CLI can generate the `examples/` conversations through redirection.
+- **In-memory history, last 10 messages:** covers follow-ups ("e no PIX?", "and with PIX?"). There is no persistence to disk, to avoid retaining personal data unnecessarily. Tool results stay out of the history, so price and stock are always looked up again.
 
-## Suposições sobre os dados
+## Data assumptions
 
-| Situação | Decisão |
+| Situation | Decision |
 |---|---|
-| WhatsApp aparece como 3341-4444 (capa e §1.2) e 3321-4500 (§7) | **3341-4444**, a mais frequente, corrigida na ingestão |
-| E-mail aparece com e sem acento | Sem acento: `contato@emporiodamusica.com.br` |
-| Parcelamento: tabela do §3 (mínimo R$ 100) contra faixas do §3.1 | **§3.1**, mais específico |
-| Não há data de recebimento | `estimated_delivery` como aproximação |
-| Não há canal de compra | Arrependimento tratado como compra online; a equipe confirma |
-| Produto descontinuado ou "em breve" com estoque | Não conta como disponível; descontinuado não mostra preço |
-| Duas promoções ativas para o mesmo produto | Vale a maior (não acumulam); não ocorre nos dados atuais |
-| Manual cita "mais de 300 instrumentos"; catálogo tem 65, sem categorias 6 a 8 | Agente diz que não encontrou; não inventa |
-| Pedidos de out/2025 a mar/2026 | Em 31/10/2026, quase todos fora dos prazos de 7 e 30 dias. O agente mostra o motivo e aponta garantia |
+| WhatsApp appears as 3341-4444 (cover and §1.2) and 3321-4500 (§7) | **3341-4444**, the most frequent, corrected at ingestion |
+| Email appears with and without an accent | Without: `contato@emporiodamusica.com.br` |
+| Installments: §3 table (R$ 100 minimum) versus §3.1 tiers | **§3.1**, which is more specific |
+| No delivery-received date | `estimated_delivery` as an approximation |
+| No purchase channel | Withdrawal treated as an online purchase; staff confirms |
+| Discontinued or "coming soon" product with stock | Does not count as available; discontinued shows no price |
+| Two active promotions for the same product | The larger applies (they do not stack); does not occur in current data |
+| Manual cites "more than 300 instruments"; catalog has 65, with no categories 6 to 8 | Agent says it did not find it; does not make things up |
+| Orders from Oct 2025 to Mar 2026 | On 2026-10-31, almost all are past the 7- and 30-day windows. The agent gives the reason and points to the warranty |
 
-## Avaliação
+## Evaluation
 
-`eval_agent.py` verifica ferramenta chamada, fatos obrigatórios e proibidos. Cobre os cenários do enunciado, esgotado, descontinuado, promoção expirada e ativa, pedido com e sem identificação, injeção de prompt, acessórios, fora de escopo e follow-up.
+`eval_agent.py` checks the tool called and required and forbidden facts. It covers the challenge's scenarios, out-of-stock, discontinued, expired and active promotions, orders with and without identification, prompt injection, accessories, out-of-scope questions, and follow-ups.
 
-**Limite:** expressões regulares conferem fatos, não tom nem utilidade. A leitura manual das conversas encontrou defeitos que elas não pegavam (por exemplo, a guarda vazava para o cliente como "você tem razão"); os defeitos foram corrigidos e viraram testes. 20 de 20 não significa que o agente esteja pronto para produção.
+**Limit:** regular expressions check facts, not tone or usefulness. Reading the conversations by hand found defects they missed (for example, the guard leaked to the customer as "você tem razão", "you're right"); these were fixed and became tests. 20 of 20 does not mean the agent is ready for production.
 
-## Limitações conhecidas e o que faria com mais tempo
+## Known limitations and what I would do with more time
 
-- **Privacidade:** mensagens e dados do pedido (primeiro nome, itens, e-mail ou telefone digitado) passam pelo OpenRouter e pelo provedor do modelo. Em produção, exigiria avaliação de LGPD ou modelo em infraestrutura própria.
-- **Identidade fraca:** número do pedido com e-mail é pouco para produção, e não há limite de tentativas. Adicionaria limite e código de confirmação.
-- **Sem handoff real:** o agente orienta falar com a equipe, mas não registra reclamações nem transfere. Adicionaria uma ferramenta de registro e a integração com WhatsApp.
-- **Parcelamento depende do modelo:** a conta de parcelas é a exceção à regra de não calcular. Passaria para uma ferramenta.
-- **Feriados:** o aviso de loja fechada não os considera.
-- **Avaliação:** ampliaria os cenários com conversas reais, com avaliação de tom por humanos ou LLM.
-- **Busca de produtos:** é por substring. Com catálogo maior, usaria busca semântica. Reranking também ajudaria o RAG com um manual maior.
-- **Índice:** não detecta alteração no PDF; rode `rag.py ingerir` ao atualizar o manual.
-- **Repetição:** o aviso de retorno da equipe ainda reaparece além do necessário.
+- **Privacy:** messages and order data (first name, items, the email or phone typed) pass through OpenRouter and the model provider. Production would require an LGPD assessment or a model on our own infrastructure.
+- **Weak identity check:** order number plus email is too little for production, and attempts are not limited. I would add a limit and a confirmation code.
+- **No real handoff:** the agent tells customers to contact the staff, but does not log complaints or transfer conversations. I would add a logging tool and WhatsApp integration.
+- **Installments depend on the model:** this math is the exception to the no-calculation rule. I would move it to a tool.
+- **Holidays:** the store-closed notice does not consider them.
+- **Evaluation:** I would expand scenarios with real conversations, with tone assessed by people or an LLM.
+- **Product search:** it uses substring matching. With a larger catalog, I would use semantic search. Reranking would also help RAG with a larger manual.
+- **Index:** it does not detect changes to the PDF; run `rag.py ingerir` after updating the manual.
+- **Repetition:** the staff-return notice still appears more than necessary.
 
-## Uso de assistentes de código
+## Use of coding assistants
 
-Usei o **Claude Code** (modelo Claude Opus 5.5) como par de programação em todo o projeto.
+I used **Claude Code** (Claude Opus 5.5 model) as a pair programmer throughout the project.
 
-**Meu papel:** defini a arquitetura (ReAct, RAG, function calling), o RAG baseado no notebook e a persona. Decidi as trocas de rumo: LM Studio em vez de Ollama, sair do modelo local para OpenRouter e usar o Haiku 5.5. Aprovei os planos e fiz todos os commits, marco a marco.
+**My role:** I defined the architecture (ReAct, RAG, function calling), the notebook-based RAG, and the persona. I made the changes of direction: LM Studio instead of Ollama, moving from a local model to OpenRouter, and using Haiku 5.5. I approved the plans and made all commits, milestone by milestone.
 
-**O papel do Claude Code:**
+**Claude Code's role:**
 
-- Leu o enunciado, o manual, os dados e o notebook, e propôs o plano, que revisei antes de qualquer código.
-- Escreveu a maior parte do código, dos testes e deste README.
-- Rodou testes e avaliações, diagnosticou falhas (como o estouro do runtime CUDA) e pesquisou os benchmarks de embedding.
-- Identificou as armadilhas dos dados e o bug de chunking do notebook.
+- Read the challenge, manual, data, and notebook, and proposed the plan, which I reviewed before any code.
+- Wrote most of the code, the tests, and this README.
+- Ran tests and evaluations, diagnosed failures (such as the CUDA runtime running out of memory), and researched the embedding benchmarks.
+- Identified the data traps and the notebook's chunking bug.
 
-**O que ajudou a manter a qualidade:** trabalhar em marcos com testes, medir antes de decidir e ler as respostas reais em vez de confiar só nos testes automatizados. Foi assim que apareceram erros do próprio assistente, como um prompt que fazia o agente recusar consultas com a loja fechada. As conversas de `examples/` são execuções reais, sem edição.
+**What helped maintain quality:** working in milestones with tests, measuring before deciding, and reading real answers instead of relying only on automated tests. That is how the assistant's own errors surfaced, such as a prompt that made the agent refuse lookups while the store was closed. The `examples/` conversations are real, unedited runs; only their headers are in English.
