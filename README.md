@@ -167,13 +167,13 @@ The name Mestre André echoes the Brazilian children's song "Na loja do Mestre A
 
 I used **Claude Code** (Claude Opus 5.5 model) as a pair programmer throughout the project.
 
-**My role:** I defined the architecture (ReAct, RAG, function calling), the notebook-based RAG, and the persona. I made the changes of direction: LM Studio instead of Ollama, moving from a local model to OpenRouter, and using Haiku 5.5. I approved the plans and made all commits, milestone by milestone.
+**My role:** I read the challenge, manual, data, and notebook, and I set the direction. I chose the architecture (ReAct, RAG, function calling), based the RAG on the notebook from my course, and defined the persona. I reviewed the plans, split the work into tested milestones, ran tests, and committed each milestone myself. When local inference proved too slow, I moved the project to OpenRouter. I asked for better models and an embedding review, then chose Haiku 5.5.
 
-**Claude Code's role:**
+**Claude Code's role:** Under my direction, it did the following:
 
-- Read the challenge, manual, data, and notebook, and proposed the plan, which I reviewed before any code.
+- Also read the materials and drafted the plans.
 - Wrote most of the code, the tests, and this README.
-- Ran tests and evaluations, diagnosed failures (such as the CUDA runtime running out of memory), and researched the embedding benchmarks.
-- Identified the data traps and the notebook's chunking bug.
+- Ran tests and evaluations, diagnosed failures such as the CUDA out-of-memory error, and gathered the embedding benchmarks.
+- Flagged the data traps and the notebook's chunking bug.
 
 **What helped maintain quality:** working in milestones with tests, measuring before deciding, and reading real answers instead of relying only on automated tests. That is how the assistant's own errors surfaced, such as a prompt that made the agent refuse lookups while the store was closed. The `examples/` conversations are real, unedited runs; only their headers are in English.
